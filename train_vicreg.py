@@ -98,8 +98,11 @@ def collate(batch):
     start_time = time.time()
     batch = torch.from_numpy(np.array(batch)).unsqueeze(1)
     batch = batch / 255.0                        
-    batch = batch.to(device)                     
+    batch = batch.to(device)        
+    # the whole 20 frames are inputs to generate embeddings, z1         
     original_inputs = batch
+    # augmented inputs are used for self supervised learning to generate 
+    # another set of embeddings, z2
     aug_inputs = F.interpolate(
         original_inputs.reshape(-1, 1, 64, 64), 
         size = (224, 224), 
@@ -131,26 +134,26 @@ save_dir = 'processed_batches'
 os.makedirs(save_dir, exist_ok=True)
 
 # if having run this once, no need to run again. They have been saved to the disk
-# current_dir = os.getcwd()
-# save_dir = os.path.join(current_dir, 'processed_batches')
-# print("Processing and saving batches to disk...")
-# batch_count = 0
-# for i, (original_inputs, aug_inputs) in enumerate(train_loader):
-#     batch_data = {
-#         'original_inputs': original_inputs.cpu(),
-#         'aug_inputs': aug_inputs.cpu()
-#     }
-#     torch.save(batch_data, f'{save_dir}/batch_{i:04d}.pt')
-#     del original_inputs, aug_inputs, batch_data
-#     torch.cuda.empty_cache()
+current_dir = os.getcwd()
+save_dir = os.path.join(current_dir, 'processed_batches')
+print("processing and saving batches to disk")
+batch_count = 0
+for i, (original_inputs, aug_inputs) in enumerate(train_loader):
+    batch_data = {
+        'original_inputs': original_inputs.cpu(),
+        'aug_inputs': aug_inputs.cpu()
+    }
+    torch.save(batch_data, f'{save_dir}/batch_{i:04d}.pt')
+    del original_inputs, aug_inputs, batch_data
+    torch.cuda.empty_cache()
     
-#     batch_count += 1
+    batch_count += 1
 
-#     if i%50 == 0:
-#         print(f"processing {i} batches")
+    if i%50 == 0:
+        print(f"processing {i} batches")
 
 '''
-After running once, use saved data
+After running once, use saved data from the disk (saving sapce and time)
 '''
 class ProcessedMovingMNIST(torch.utils.data.Dataset):
     def __init__(self, data_path):
@@ -190,23 +193,26 @@ saved_train_dataset = ProcessedMovingMNIST(save_dir)
 train_loader = torch.utils.data.DataLoader(saved_train_dataset, batch_size = 32, shuffle = True)
 
 # The input video frames are grayscale, thus single channel
-# model choice one: ConvLSTM, proven effective for video data
-model1 = Seq2Seq(num_channels=1, num_kernels=64, 
-kernel_size=(3, 3), padding=(1, 1), activation="relu", 
-frame_size=(64, 64), num_layers=3).to(device)
-model1.to(device)
+# mainly for video encoder and decoder 
+# model1 = Seq2Seq(num_channels=1, num_kernels=64, 
+# kernel_size=(3, 3), padding=(1, 1), activation="relu", 
+# frame_size=(64, 64), num_layers=3).to(device)
+# model1.to(device)
 
-model2 = Seq2Seq(num_channels=1, num_kernels=64, 
-kernel_size=(3, 3), padding=(1, 1), activation="relu", 
-frame_size=(64, 64), num_layers=3).to(device)
-model2.to(device)
+# model2 = Seq2Seq(num_channels=1, num_kernels=64, 
+# kernel_size=(3, 3), padding=(1, 1), activation="relu", 
+# frame_size=(64, 64), num_layers=3).to(device)
+# model2.to(device)
 
-# model chice 2: a very simple cnn encoder
-# model1 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
-# model2 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
+# a very simple cnn encoder
+# two same models/encoder runing on two inpust to generate two sets of embeddings 
+# for traning with vicreg 
+model1 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
+model2 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
 
 
 # can be seperate with 2 different optimizers too
+# if the same optimizer, contatenate the model parameters 
 optim = Adam(list(model1.parameters())+ list(model2.parameters()), lr=1e-4)
 
 num_epochs = 10
@@ -227,6 +233,7 @@ for epoch in range(1, num_epochs+1):
         # print(input1.dim())
         if batch_num%50==0:
             print(batch_num)
+
         if input1.dim() == 4:
             input1 = input1.unsqueeze(1)  
         if input2.dim() == 4:
@@ -235,6 +242,7 @@ for epoch in range(1, num_epochs+1):
         input1 = input1.to(device)
         input2 = input2.to(device)
 
+        # two sets of output embeddings 
         z1 = model1(input1)      
         z2 = model2(input2)
         z1_flat = z1.view(z1.shape[0], -1)
@@ -303,20 +311,8 @@ for epoch in range(1, num_epochs+1):
 wandb.finish()            
 
 """
-Result 1 with convLSTM and vicreg. 
-Epoch 10, Batch 100: Total loss: 0.0782, Var: 0.0051, Cov: 0.0000, Inv: 0.0000
-150
-200
-Epoch 10, Batch 200: Total loss: 0.1563, Var: 0.0103, Cov: 0.0000, Inv: 0.0001
-250
-300
-Epoch 10, Batch 300: Total loss: 0.2346, Var: 0.0154, Cov: 0.0000, Inv: 0.0001
-Epoch 10:  Total loss: 0.0000, Var: 0.0161, Cov: 0.0000, Inv: 0.0001
-"""
-
-
-"""
-Result 2 with CNN_3Layer and vicreg:
+Result 2 with CNN_3Layer encoder and vicreg:
+For full results, see wandb_results folder
 
 Epoch 10, Batch 100: Total loss: 0.0002, Var: 0.0000, Cov: 0.0000, Inv: 0.0000
 150

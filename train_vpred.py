@@ -36,10 +36,6 @@ from pathlib import Path
 import os
 from torchvision.transforms.functional import rgb_to_grayscale
 from torchvision.transforms import Compose, Lambda
-from torchvision.transforms._transforms_video import (
-    CenterCropVideo,
-    NormalizeVideo,
-)
 from torch.utils.data import DataLoader
 from pytorchvideo.data.encoded_video import EncodedVideo
 from resnet import resnet50
@@ -92,7 +88,8 @@ wandb.init(
     }
 )
 
-# Peak Signal-to-Noise Ratio
+# psnr
+# peak signal-to-noise ratio
 # the quality of images/videos reconstructed 
 def psnr(pred, target, max_val = 1.0):
     mse = F.mse_loss(pred, target)
@@ -109,7 +106,8 @@ def collate(batch):
     start_time = time.time()
     batch = torch.from_numpy(np.array(batch)).unsqueeze(1)
     batch = batch / 255.0                        
-    batch = batch.to(device)                     
+    batch = batch.to(device)      
+    # first 10 frames training, second 10 frames as target/pred               
     inputs = batch[:, :, :10]
     targets = batch[:, :, 10:]
     load_time = time.time() - start_time       
@@ -119,79 +117,79 @@ def collate(batch):
 '''
 Running for the first time, train and val dataloader creation: 
 '''
-# train_loader = DataLoader(train_data, shuffle=False,
-#                         batch_size=16, collate_fn = collate)
-# print('training loader done')
+train_loader = DataLoader(train_data, shuffle=False,
+                        batch_size=16, collate_fn = collate)
+print('training loader done')
 
-# val_loader = DataLoader(val_data, shuffle=False, 
-#                         batch_size=16, collate_fn = collate)
-# print('val done') 
+val_loader = DataLoader(val_data, shuffle=False, 
+                        batch_size=16, collate_fn = collate)
+print('val done') 
 
-# all_inputs = []
-# all_targets = []
-# print("collecting")
-# for i, (inputs, targets) in enumerate(train_loader):
-#     all_inputs.append(inputs.cpu())
-#     all_targets.append(targets.cpu())
-#     if i%10 == 0:
-#         print(f"processing {i} batches")
-#     torch.cuda.empty_cache()
-# print("concatenating all data ...")
-# all_inputs = torch.cat(all_inputs, dim = 0)
-# print("1")
-# all_targets = torch.cat(all_targets, dim = 0)
-
-
-# save_dir = "saved_train_data/"
-# os.makedirs(save_dir, exist_ok = True)
-# torch.save({
-#     "inputs": all_inputs,
-#     "targets": all_targets, 
-# }, os.path.join(save_dir, 'train_data.pt'))
-
-# print("saved")
-# print(f"input shape: ", {all_inputs.shape})
-# print(f'targest shape: ', {all_targets.shape})
-
-# val_all_inputs = []
-# val_all_targets = []
-# print("collecting")
-# for i, (inputs, targets) in enumerate(val_loader):
-#     val_all_inputs.append(inputs.cpu())
-#     val_all_targets.append(targets.cpu())
-#     if i%10 == 0:
-#         print(f"processing {i} val batches")
-#     torch.cuda.empty_cache()
-# print("concatenating all data ...")
-# val_all_inputs = torch.cat(val_all_inputs, dim = 0)
-# print("1")
-# val_all_targets = torch.cat(val_all_targets, dim = 0)
+all_inputs = []
+all_targets = []
+print("collecting")
+for i, (inputs, targets) in enumerate(train_loader):
+    all_inputs.append(inputs.cpu())
+    all_targets.append(targets.cpu())
+    if i%10 == 0:
+        print(f"processing {i} batches")
+    torch.cuda.empty_cache()
+print("concatenating all data ...")
+all_inputs = torch.cat(all_inputs, dim = 0)
+print("1")
+all_targets = torch.cat(all_targets, dim = 0)
 
 
-# save_dir = "saved_val_data/"
-# os.makedirs(save_dir, exist_ok = True)
-# torch.save({
-#     "inputs": val_all_inputs,
-#     "targets": val_all_targets, 
-# }, os.path.join(save_dir, 'val_data.pt'))
+save_dir = "saved_train_data/"
+os.makedirs(save_dir, exist_ok = True)
+torch.save({
+    "inputs": all_inputs,
+    "targets": all_targets, 
+}, os.path.join(save_dir, 'train_data.pt'))
+
+print("saved")
+print(f"input shape: ", {all_inputs.shape})
+print(f'targest shape: ', {all_targets.shape})
+
+val_all_inputs = []
+val_all_targets = []
+print("collecting")
+for i, (inputs, targets) in enumerate(val_loader):
+    val_all_inputs.append(inputs.cpu())
+    val_all_targets.append(targets.cpu())
+    if i%10 == 0:
+        print(f"processing {i} val batches")
+    torch.cuda.empty_cache()
+print("concatenating all data ...")
+val_all_inputs = torch.cat(val_all_inputs, dim = 0)
+print("2")
+val_all_targets = torch.cat(val_all_targets, dim = 0)
+
+
+save_dir = "saved_val_data/"
+os.makedirs(save_dir, exist_ok = True)
+torch.save({
+    "inputs": val_all_inputs,
+    "targets": val_all_targets, 
+}, os.path.join(save_dir, 'val_data.pt'))
 
 
 
-# if running for the first time 
-# Get a batch
-# input, _ = next(iter(val_loader))
+if running for the first time 
+Get a batch
+input, _ = next(iter(val_loader))
 
-# # Reverse process before displaying
-# input = input.cpu().numpy() * 255.0     
+# Reverse process before displaying
+input = input.cpu().numpy() * 255.0     
 
 
-# for i, video in enumerate(input.squeeze(1)[:3]):
-#     with io.BytesIO() as gif:
-#         imageio.mimsave(gif, video.astype(np.uint8), format="GIF", fps=5)
-#         gif_bytes = gif.getvalue() 
-#         display(HBox([WImage(value=gif_bytes)]))
-#     with open(f"output_{i}.gif", "wb") as f:
-#         f.write(gif_bytes)
+for i, video in enumerate(input.squeeze(1)[:3]):
+    with io.BytesIO() as gif:
+        imageio.mimsave(gif, video.astype(np.uint8), format="GIF", fps=5)
+        gif_bytes = gif.getvalue() 
+        display(HBox([WImage(value=gif_bytes)]))
+    with open(f"output_{i}.gif", "wb") as f:
+        f.write(gif_bytes)
 
 
 
@@ -216,11 +214,6 @@ saved_train_dataset = ProcessedMovingMNIST('saved_train_data/train_data.pt')
 train_loader = torch.utils.data.DataLoader(saved_train_dataset , batch_size = 32, shuffle = True)
 saved_val_dataset = ProcessedMovingMNIST('saved_val_data/val_data.pt')
 val_loader = torch.utils.data.DataLoader(saved_val_dataset, batch_size = 32, shuffle = True)
-
-# for batch_num, (input, target) in enumerate(train_loader, 1):
-#     print(batch_num, input.shape, target.shape)
-#     if batch_num >=3: 
-#         break
 
 
 # The input video frames are grayscale, thus single channel
@@ -252,7 +245,7 @@ for epoch in range(1, num_epochs+1):
         # print(batch_num)
         if input.dim() == 4:
             input = input.unsqueeze(1)  
-        # print(f"Fixed input shape: {input.shape}")
+        # print(f"fixed input shape: {input.shape}")
         input = input.to(device)
         target = target.to(device)
         # print("train")
@@ -298,10 +291,10 @@ for epoch in range(1, num_epochs+1):
         "learning_rate": optimizer.param_groups[0]['lr']
     })      
 
-    print(f"Epoch {epoch} Summary:")
-    print(f"Loss: {train_loss / num_batches:.6f}")
+    print(f"epoch {epoch} metrics:")
+    print(f"loss: {train_loss / num_batches:.6f}")
     print(f"PSNR: {epoch_psnr / num_batches:.2f} dB")
-    print(f"MAE: {epoch_mae / num_batches:.4f}")
+    print(f"mae: {epoch_mae / num_batches:.4f}")
 
     val_loss = 0                                                 
     model.eval()            

@@ -1,4 +1,7 @@
 # https://sladewinter.medium.com/video-frame-prediction-using-convlstm-network-in-pytorch-b5210a6ce582
+# mainly for video prediction training 
+# run with train_vpred.py
+
 import torch
 import torch.nn as nn
 from ConvLSTMCell import ConvLSTMCell

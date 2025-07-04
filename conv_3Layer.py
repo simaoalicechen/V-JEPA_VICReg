@@ -1,3 +1,6 @@
+# a simple three layer Conv net encoder for SSL vicreg training 
+# run with tran_vicreg.py 
+
 import torch
 import torch.nn as nn
 
