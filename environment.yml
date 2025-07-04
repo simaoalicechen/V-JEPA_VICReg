@@ -1,0 +1,28 @@
+# mostly used the one from OpenSTL with some modification
+name: OpenSTL
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  # modified 
+  - numpy
+  - hickle
+  - pip
+  # modified 
+  - python=3.9.16
+  - pytorch
+  - xarray==0.19.0
+  # added
+  - filelock
+  - huggingface_hub
+  - pip:
+    - decord
+    - fvcore
+    - lpips
+    - nni
+    - pandas
+    - scikit-image<=0.19.3
+    - timm<=0.6.11
+    - tqdm
+prefix: /opt/anaconda3/envs/openstl
