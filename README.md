@@ -5,8 +5,8 @@ This repo consists of 2 training objectives:
 
 Instructions:
 
-conda env create -f environment.yml
-conda activate video_training
+ - conda env create -f environment.yml
+ - conda activate video_training
 
 VICReg results:
 
