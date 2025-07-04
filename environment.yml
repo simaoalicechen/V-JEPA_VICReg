@@ -1,5 +1,5 @@
 # mostly used the one from OpenSTL with some modification
-name: OpenSTL
+name: video_training
 channels:
   - pytorch
   - conda-forge
