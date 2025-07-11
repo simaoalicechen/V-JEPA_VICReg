@@ -11,7 +11,8 @@ Instructions:
 
  - conda env create -f environment.yml (more complete) or conda env create -f environment2.yml
  - conda activate OpenSTL_fixed
- Sample command lines: 
+
+Sample command lines: 
  - python *.py
  - python train_jepa.py --learning_rate 0.0001 --optimizer "Adam" --var_loss_weight 1 --cov_loss_weight 1 --pred_loss_weight 10 --epochs 10 
  - python train_vicreg.py --learning_rate 0.0001 --optimizer "Adam" --var_loss_weight 15 --cov_loss_weight 1 --inv_loss_weight 25 --epochs 1 
