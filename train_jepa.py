@@ -158,7 +158,8 @@ def forward_pass(epoch, batch_num, encoder, predictor, frames, args, actions = N
         total_pred_loss += pred_loss
         # use prediction for next step, not actual
         # still in this loop, so it will become the next frame sent to predictor. 
-        current_representation = predicted_representation
+        # current_representation = predicted_representation
+        current_representation = actual_representations[t+1]
 
     batch_loss_dict = {
         "epoch": epoch, 
@@ -279,7 +280,7 @@ def val_one_epoch(epoch, encoder, predictor, val_loader):
     return new_epoch_logged_losses_val
 
 dataset = MovingMNISTDataset()
-dataloader = DataLoader(dataset, batch_size = 8, shuffle = True)
+dataloader = DataLoader(dataset, batch_size = 32, shuffle = True)
 
 print("after train loaders")
 print(len(dataloader))
