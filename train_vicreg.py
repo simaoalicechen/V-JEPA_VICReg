@@ -42,6 +42,7 @@ from resnet import resnet50
 from IPython.display import display
 from torch.optim import Adam
 from ipywidgets import HBox, Image as WImage
+from conv_3Layer import CNN_3Layer
 import ipywidgets as widgets
 import numpy as np
 import torch
@@ -63,6 +64,24 @@ import inspect
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 
+# setups 
+# hyperperameters
+parser = argparse.ArgumentParser(description="jepa_training_script")
+parser.add_argument("--learning_rate", type=float, default=0.001, help="default learning rate for the optimizer") 
+parser.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "SGD", "RMSprop"], help="Optimizer to use for training")
+parser.add_argument("--epochs", type= int, default = 10, help = "number of training epochs")
+parser.add_argument("--batch_size", type = float, default = 32)
+parser.add_argument("--weight_decay", type = float, default=1e-5)
+parser.add_argument("--lr_scheduler", type = str, default = "none", choices=["none", "cosine", "step", "plateau"])
+
+# loss weights for var, cov, and pred
+parser.add_argument("--var_loss_weight", type=float, default=15.0, help="Weight for variance loss")
+parser.add_argument("--cov_loss_weight", type=float, default=1.0, help="Weight for covariance loss")
+parser.add_argument("--inv_loss_weight", type=float, default=25.0, help="Weight for invariance loss")
+
+
+args = parser.parse_args()
+
 # load from npy
 MovingMNIST = np.load('mnist_test_seq.npy').transpose(1, 0, 2, 3)
 len(MovingMNIST)
@@ -77,11 +96,11 @@ wandb.init(
         "epochs": 10,
         "batch_size": 32,
         "learning_rate": 0.001,
-        "model": "CNN",
+        "model": "ConvNet",
         "ssl_method": "VICReg",
-        "lambda_inv": 25.0,
-        "lambda_var": 25.0,
-        "lambda_cov": 1.0
+        "lambda_inv": args.inv_loss_weight,
+        "lambda_var": args.var_loss_weight,
+        "lambda_cov": args.cov_loss_weight,
     }
 )
 
@@ -109,7 +128,7 @@ class MovingMNISTDataset(Dataset):
 # just to work on a simple encoder and use the representations with vicreg
 # train_jepa only uses variance and covariance on actual representations 
 # and pred on predictions and actual representations
-def forward_pass(epoch, batch_num, encoder1, encoder2, frames):
+def forward_pass(epoch, batch_num, encoder1, encoder2, frames, args):
     frames = frames.to(device)
     seq_length = frames.shape[1]
     batch_size = frames.shape[0]
@@ -126,11 +145,12 @@ def forward_pass(epoch, batch_num, encoder1, encoder2, frames):
     for t in range(min_length):
         odd_representation = encoder1(odd_frames[:, t])
         even_representation = encoder2(even_frames[:, t])
-        loss, var_loss, cov_loss, inv_loss = vicreg_loss(odd_representation, even_representation)
+        var_loss, cov_loss, inv_loss = vicreg_loss(odd_representation, even_representation)
         total_cov_loss += cov_loss
         total_var_loss += var_loss
         total_inv_loss += inv_loss 
-        total_vicreg_loss += loss
+        total_vicreg_loss += var_loss*args.var_loss_weight + cov_loss*args.var_loss_weight + \
+                        inv_loss*args.inv_loss_weight
 
     batch_loss_dict = {
         "epoch": epoch, 
@@ -157,7 +177,7 @@ def train_one_epoch(epoch, encoder1, encoder2, dataloader, optimizer):
     }
     total_batch_length = len(dataloader)
     for batch_num, batch in enumerate(dataloader):
-        loss_dict = forward_pass(epoch, batch_num, encoder1, encoder2, batch)
+        loss_dict = forward_pass(epoch, batch_num, encoder1, encoder2, batch, args)
         vicreg_loss = loss_dict["total_vicreg_loss"]
         optimizer.zero_grad()
         vicreg_loss.backward()
@@ -204,7 +224,7 @@ def val_one_epoch(epoch, encoder1, encoder2, val_loader):
 
     with torch.no_grad():
         for batch_num, batch in enumerate(val_loader):
-            loss_dict = forward_pass(epoch, batch_num, encoder1, encoder2, batch)
+            loss_dict = forward_pass(epoch, batch_num, encoder1, encoder2, batch, args)
             for key in epoch_loss_dict_val:
                 if key != "epoch":
                     epoch_loss_dict_val[key] += loss_dict[key]
@@ -242,9 +262,29 @@ train_loader = DataLoader(train_dataset, batch_size = 32, shuffle = True)
 val_loader = DataLoader(val_dataset, batch_size = 32, shuffle = True)
 encoder1 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
 encoder2 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
-optim = Adam(list(encoder1.parameters())+ list(encoder2.parameters()), lr=1e-3)
+# optim = Adam(list(encoder1.parameters())+ list(encoder2.parameters()), lr=1e-3)
 
-num_epochs = 10
+# arg parser stuff: 
+learning_rate = args.learning_rate
+optimizer_name = args.optimizer
+num_epochs = args.epochs
+var_loss_weight = args.var_loss_weight
+cov_loss_weight = args.cov_loss_weight
+inv_loss_weight = args.inv_loss_weight 
+
+
+# todo
+weight_decay = args.weight_decay
+lr_scheduler = args.lr_scheduler
+
+# args naming: 
+if optimizer_name == "Adam":
+    optim = Adam(list(encoder1.parameters())+ list(encoder2.parameters()), lr=learning_rate)
+elif optimizer_name == "SGD":
+    optim = torch.optim.SGD(list(encoder1.parameters())+ list(encoder2.parameters()), lr=learning_rate) 
+elif optimizer_name == "RMSprop":
+    optim = torch.optim.RMSprop(list(encoder1.parameters())+ list(encoder2.parameters()), lr=learning_rate)
+
 print("no errors so far")
 
 for epoch in range(1, num_epochs+1):

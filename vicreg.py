@@ -37,8 +37,8 @@ def vicreg_loss(z1, z2, inv_coeff = 25.0, var_coeff = 15.0, cov_coeff = 1.0):
 
     variance_loss = (z1_variance_loss + z2_varaince_loss)/2
     covariance_loss = (z1_covariance_loss + z2_covariance_loss)/2
-    loss = inv_coeff*invariance_loss + var_coeff*variance_loss + cov_coeff*covariance_loss
-    return loss, variance_loss, covariance_loss, invariance_loss 
+    # loss = inv_coeff + var_coeff + cov_coeff
+    return variance_loss, covariance_loss, invariance_loss 
 
 # def vc_loss(z1, z2)
 
