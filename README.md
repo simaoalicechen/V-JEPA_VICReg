@@ -20,3 +20,4 @@ Sample command lines:
 V-JEPA and VICReg results:
 
  - See wandb_results
+ - result chart naming conventions: jepa - 'learning rate' - 'var loss weight' - 'cov loss weight' - 'pred loss weight'
