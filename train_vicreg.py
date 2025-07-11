@@ -1,9 +1,7 @@
-# based upon: https://pytorchvideo.org/docs/tutorial_torchhub_inference 
-# and https://sladewinter.medium.com/video-frame-prediction-using-convlstm-network-in-pytorch-b5210a6ce582
-# and https://pytorchvideo.org/docs/tutorial_classification
+# only vicreg, jepa see train_jepa.py, train_jepa2.py, train_jepa3.py
 
 """
-Part 1: (see train.py)
+Part 1: (see train_vpred.py)
 supervised learning on video data for prediction
 
 1. download moving mnist 
@@ -12,16 +10,15 @@ supervised learning on video data for prediction
 4. second_10_seconds --> targets
 5. train, val, test, train with ConvLSTM and MSELoss
 
-Part 2: this file (train2.py)
+Part 2: this file (train_vicreg.py)
 
 self-supervised learning with vicreg on two inputs, original and augmented one, to go through 
 2 identical encoders, either convLSTM or cnn_3layers. 
 
-6. group1 = original
-7. group2 = augmented 
-8. train with convnet (encoder) and VICReg loss with the two embeddings
-9. outputs = 2 sets of representations/embeddings
-10. results are 2 sets of very small losses
+6. groups of inputs based on the time frames they are at, sequentially sent as inputs
+7. train with convnet (encoder) and VICReg loss with the two embeddings
+8. outputs = 2 sets of representations/embeddings
+9. results are 2 sets of very small losses
 
 """
 '''
@@ -44,6 +41,7 @@ from pytorchvideo.data.encoded_video import EncodedVideo
 from resnet import resnet50
 from ConvLSTM import ConvLSTM 
 from IPython.display import display
+from torch.optim import Adam
 from ipywidgets import HBox, Image as WImage
 import ipywidgets as widgets
 import numpy as np
@@ -58,6 +56,7 @@ import torch.multiprocessing as mp
 import io
 import imageio
 from ipywidgets import widgets, HBox
+from torch.utils.data import Dataset, DataLoader
 from skimage.metrics import structural_similarity as ssim
 from vicreg import vicreg_loss
 import sys
@@ -93,233 +92,166 @@ wandb.init(
 np.random.shuffle(MovingMNIST)
 train_data = MovingMNIST        
 
-
-def collate(batch):
-    start_time = time.time()
-    batch = torch.from_numpy(np.array(batch)).unsqueeze(1)
-    batch = batch / 255.0                        
-    batch = batch.to(device)        
-    # the whole 20 frames are inputs to generate embeddings, z1         
-    original_inputs = batch
-    # augmented inputs are used for self supervised learning to generate 
-    # another set of embeddings, z2
-    aug_inputs = F.interpolate(
-        original_inputs.reshape(-1, 1, 64, 64), 
-        size = (224, 224), 
-        mode = 'bilinear', 
-        align_corners = False
-    ).reshape(original_inputs.shape[0], 1, 10, 224, 224)
-    # resize back to 64X64 so that we can feed to the same model
-    aug_inputs = F.interpolate(
-        aug_inputs.reshape(-1, 1, 224, 224), 
-        size=(64, 64), 
-        mode='bilinear', 
-        align_corners=False
-    ).reshape(original_inputs.shape[0], 1, 10, 64, 64)
-    # transforms.RandomHorizontalFlip(p=0.5),
-    # random horizontal flip 
-    if torch.rand(1) > 0.5:
-        aug_inputs = torch.flip(aug_inputs, dims=[4])
-
-    load_time = time.time() - start_time       
-    print(load_time)
-    return original_inputs, aug_inputs
-
-# Running for the first time, train and val dataloader creation: 
-train_loader = DataLoader(train_data, shuffle=False, 
-                        batch_size=8, collate_fn = collate)
-print('training loader done')
-
-save_dir = 'processed_batches'
-os.makedirs(save_dir, exist_ok=True)
-
-# if having run this once, no need to run again. They have been saved to the disk
-current_dir = os.getcwd()
-save_dir = os.path.join(current_dir, 'processed_batches')
-print("processing and saving batches to disk")
-batch_count = 0
-for i, (original_inputs, aug_inputs) in enumerate(train_loader):
-    batch_data = {
-        'original_inputs': original_inputs.cpu(),
-        'aug_inputs': aug_inputs.cpu()
-    }
-    torch.save(batch_data, f'{save_dir}/batch_{i:04d}.pt')
-    del original_inputs, aug_inputs, batch_data
-    torch.cuda.empty_cache()
-    
-    batch_count += 1
-
-    if i%50 == 0:
-        print(f"processing {i} batches")
-
-'''
-After running once, use saved data from the disk (saving sapce and time)
-'''
-class ProcessedMovingMNIST(torch.utils.data.Dataset):
-    def __init__(self, data_path):
-
-        self.data_path = data_path
-        self.batch_files = sorted([f for f in os.listdir(data_path) if f.endswith('.pt')])
-
-        first_batch_path = os.path.join(data_path, self.batch_files[0])
-        first_data = torch.load(first_batch_path, map_location='cpu')
-        
-        self.batch_size = len(first_data['original_inputs'])
-        self.length = len(self.batch_files) * self.batch_size
-
-        self.original_shape = first_data['original_inputs'][0].shape
-        self.aug_shape = first_data['aug_inputs'][0].shape
-
-        del first_data
+# use MovingMNISTDataset directly
+class MovingMNISTDataset(Dataset):
+    def __init__(self, data_path = 'mnist_test_seq.npy'):
+        self.data = np.load(data_path).transpose(1, 0, 2, 3)
+        np.random.shuffle(self.data)
 
     def __len__(self):
-        return self.length 
+        return len(self.data)
 
     def __getitem__(self, idx):
-        batch_idx = idx // self.batch_size
-        within_batch_idx = idx % self.batch_size
-        batch_file = self.batch_files[batch_idx]
-        batch_path = os.path.join(self.data_path, batch_file)
-        data = torch.load(batch_path, map_location='cpu')
-        original = data['original_inputs'][within_batch_idx].clone()
-        aug = data['aug_inputs'][within_batch_idx].clone()
+        sequence = self.data[idx]
+        sequence = torch.FloatTensor(sequence).unsqueeze(1)
+        return sequence/255.0
 
-        del data
+# corrected previous errors 
+# not using augmented different version of inputs, but use odd frames as one set of inputs
+# and even frames as another set of inputs
+# just to work on a simple encoder and use the representations with vicreg
+# train_jepa only uses variance and covariance on actual representations 
+# and pred on predictions and actual representations
+def forward_pass(epoch, batch_num, encoder1, encoder2, frames):
+    frames = frames.to(device)
+    seq_length = frames.shape[1]
+    batch_size = frames.shape[0]
 
-        return original, aug
-        
+    odd_frames = frames[:, ::2]
+    even_frames = frames[:, 1::2]
 
-saved_train_dataset = ProcessedMovingMNIST(save_dir)
-train_loader = torch.utils.data.DataLoader(saved_train_dataset, batch_size = 32, shuffle = True)
+    min_length = min(odd_frames.shape[1], even_frames.shape[1])
 
-# The input video frames are grayscale, thus single channel
-# mainly for video encoder and decoder 
-# model1 = Seq2Seq(num_channels=1, num_kernels=64, 
-# kernel_size=(3, 3), padding=(1, 1), activation="relu", 
-# frame_size=(64, 64), num_layers=3).to(device)
-# model1.to(device)
+    total_cov_loss = 0.0
+    total_var_loss = 0.0
+    total_inv_loss = 0.0
+    total_vicreg_loss = 0.0
+    for t in range(min_length):
+        odd_representation = encoder1(odd_frames[:, t])
+        even_representation = encoder2(even_frames[:, t])
+        loss, var_loss, cov_loss, inv_loss = vicreg_loss(odd_representation, even_representation)
+        total_cov_loss += cov_loss
+        total_var_loss += var_loss
+        total_inv_loss += inv_loss 
+        total_vicreg_loss += loss
 
-# model2 = Seq2Seq(num_channels=1, num_kernels=64, 
-# kernel_size=(3, 3), padding=(1, 1), activation="relu", 
-# frame_size=(64, 64), num_layers=3).to(device)
-# model2.to(device)
+    batch_loss_dict = {
+        "epoch": epoch, 
+        "batch_num": batch_num,
+        "total_var_loss": total_var_loss,
+        "total_cov_loss": total_cov_loss, 
+        "total_inv_loss": total_inv_loss, 
+        # weights defined in the function file
+        "total_vicreg_loss": total_vicreg_loss
+    }
 
-# a very simple cnn encoder
-# two same models/encoder runing on two inpust to generate two sets of embeddings 
-# for traning with vicreg 
-model1 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
-model2 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
+    return batch_loss_dict
 
+def train_one_epoch(epoch, encoder1, encoder2, dataloader, optimizer): 
+    encoder1.train()
+    encoder2.train()
+    total_loss = 0.0
+    epoch_loss_dict = {
+        "epoch": epoch, 
+        "total_var_loss": 0.0,
+        "total_cov_loss": 0.0,
+        "total_inv_loss":0.0,
+        "total_vicreg_loss": 0.0
+    }
+    total_batch_length = len(dataloader)
+    for batch_num, batch in enumerate(dataloader):
+        loss_dict = forward_pass(epoch, batch_num, encoder1, encoder2, batch)
+        vicreg_loss = loss_dict["total_vicreg_loss"]
+        optimizer.zero_grad()
+        vicreg_loss.backward()
+        optimizer.step()
+        for key in epoch_loss_dict:
+            if key != "epoch":
+                epoch_loss_dict[key] += loss_dict[key]
 
-# can be seperate with 2 different optimizers too
-# if the same optimizer, contatenate the model parameters 
-optim = Adam(list(model1.parameters())+ list(model2.parameters()), lr=1e-4)
+    epoch_logged_losses = {
+        "epoch": epoch, 
+        "total_var_loss": epoch_loss_dict['total_var_loss'].item()/total_batch_length,
+        "total_cov_loss": epoch_loss_dict['total_cov_loss'].item()/total_batch_length,
+        "total_inv_loss": epoch_loss_dict['total_inv_loss'].item()/total_batch_length,
+        "total_vicreg_loss": epoch_loss_dict['total_vicreg_loss'].item()/total_batch_length
+    }
 
-num_epochs = 10
+    print(epoch_logged_losses)
 
-for epoch in range(1, num_epochs+1):
-    
-    train_loss = 0.0           
-    var_loss = 0.0
-    cov_loss = 0.0
-    inv_loss = 0.0                              
-    model1.train() 
-    model2.train()   
-
-    print(epoch)
-    print("train")
-    print(len(train_loader))
-    for batch_num, (input1, input2) in enumerate(train_loader, 1):  
-        # print(input1.dim())
-        if batch_num%50==0:
-            print(batch_num)
-
-        if input1.dim() == 4:
-            input1 = input1.unsqueeze(1)  
-        if input2.dim() == 4:
-            input2 = input2.unsqueeze(1)
-            
-        input1 = input1.to(device)
-        input2 = input2.to(device)
-
-        # two sets of output embeddings 
-        z1 = model1(input1)      
-        z2 = model2(input2)
-        z1_flat = z1.view(z1.shape[0], -1)
-        z2_flat = z2.view(z2.shape[0], -1)
-        # print(z1.shape, z2.shape, "z1, z2, shape")
-        loss, var, cov, inv = vicreg_loss(z1_flat, z2_flat)
-        optim.zero_grad()
-        loss.backward()
-        optim.step()
-
-
-        if z1.shape[1] == 1:
-            z1 = z1.repeat(1, 3, 1, 1)
-        if z2.shape[1] == 1:
-            z2 = z2.repeat(1, 3, 1, 1)  
-
-        train_loss += loss.item()
-        var_loss += var.item()
-        cov_loss += cov.item()
-        inv_loss += inv.item()
-
-        # wandb
-        if batch_num % 50 == 0:
-            wandb.log({
-                "batch_total_loss": train_loss,
-                "batch_variance_loss": var_loss,
-                "batch_covariance_loss": cov_loss, 
-                "batch_invariance_loss": inv_loss, 
-                "epoch": epoch,
-                "batch": batch_num,
-                "learning_rate": optim.param_groups[0]['lr']
-            })
-
-
-        if batch_num % 100 == 0:
-                print(f'Epoch {epoch}, Batch {batch_num}: '
-                      f'Total loss: {train_loss:.4f}, '
-                      f'Var: {var_loss:.4f}, '
-                      f'Cov: {cov_loss:.4f}, '
-                      f'Inv: {inv_loss:.4f}')
-
-
-        del input1, input2, loss, var, cov, inv, 
-        torch.cuda.empty_cache()               
-
-
-    train_loss /= len(train_loader.dataset)    
-    num_batches = len(train_loader)
-
-    # wandb after an epoch
     wandb.log({
-        "epoch": epoch,
-        "epoch_total_loss": train_loss / num_batches,
-        "epoch_variance_loss": var_loss / num_batches,
-        "epoch_covariance_loss": cov_loss / num_batches,
-        "epoch_invariance_loss": inv_loss / num_batches,
+        "epoch": epoch_logged_losses['epoch'], 
+        "total_var_loss": epoch_logged_losses['total_var_loss'], 
+        "total_cov_loss": epoch_logged_losses['total_cov_loss'], 
+        "total_inv_loss": epoch_logged_losses['total_inv_loss'], 
+        "total_vicreg_loss": epoch_logged_losses['total_vicreg_loss']
     })
 
-    print(f'Epoch {epoch}: ', 
-                      f'Total loss: {train_loss:.4f}, '
-                      f'Var: {var_loss:.4f}, '
-                      f'Cov: {cov_loss:.4f}, '
-                      f'Inv: {inv_loss:.4f}') 
+    return epoch_logged_losses
+    
+def val_one_epoch(epoch, encoder1, encoder2, val_loader):
 
-# finish after all runs
-wandb.finish()            
+    encoder1.eval()
+    encoder2.eval()
+    total_loss = 0.0 
+    loss_dict_val ={}
 
-"""
-Result 2 with CNN_3Layer encoder and vicreg:
-For full results, see wandb_results folder
+    epoch_loss_dict_val = {
+        "epoch": epoch, 
+        "total_var_loss": 0.0,
+        "total_cov_loss": 0.0,
+        "total_inv_loss":0.0,
+        "total_vicreg_loss": 0.0
+    }
+    total_batch_length = len(val_loader)
 
-Epoch 10, Batch 100: Total loss: 0.0002, Var: 0.0000, Cov: 0.0000, Inv: 0.0000
-150
-200
-Epoch 10, Batch 200: Total loss: 0.0005, Var: 0.0000, Cov: 0.0000, Inv: 0.0000
-250
-300
-Epoch 10, Batch 300: Total loss: 0.0007, Var: 0.0000, Cov: 0.0000, Inv: 0.0000
-Epoch 10:  Total loss: 0.0000, Var: 0.0000, Cov: 0.0000, Inv: 0.0000
-"""
+    with torch.no_grad():
+        for batch_num, batch in enumerate(val_loader):
+            loss_dict = forward_pass(epoch, batch_num, encoder1, encoder2, batch)
+            for key in epoch_loss_dict_val:
+                if key != "epoch":
+                    epoch_loss_dict_val[key] += loss_dict[key]
+
+    epoch_logged_losses_val = {
+        "epoch": epoch, 
+        "total_var_loss": epoch_loss_dict_val['total_var_loss'].item()/total_batch_length,
+        "total_cov_loss": epoch_loss_dict_val['total_cov_loss'].item()/total_batch_length,
+        "total_inv_loss": epoch_loss_dict_val['total_inv_loss'].item()/total_batch_length,
+        "total_vicreg_loss": epoch_loss_dict_val['total_vicreg_loss'].item()/total_batch_length
+    }
+
+    post_fix = "_val"
+    new_epoch_logged_losses_val = {key + post_fix: value for key, value in epoch_logged_losses_val.items()}
+    print(new_epoch_logged_losses_val)
+    wandb.log({
+        "epoch_val": epoch_logged_losses_val['epoch'], 
+        "total_var_loss_val": epoch_logged_losses_val['total_var_loss'], 
+        "total_cov_loss_val": epoch_logged_losses_val['total_cov_loss'], 
+        "total_inv_loss_val": epoch_logged_losses_val['total_inv_loss'], 
+        "total_vicreg_loss_val": epoch_logged_losses_val['total_vicreg_loss']
+    })
+
+    return new_epoch_logged_losses_val
+
+
+dataset = MovingMNISTDataset()
+dataloader = DataLoader(dataset, batch_size = 8, shuffle = True)
+
+print("after train loaders")
+print(len(dataloader))
+
+train_dataset, val_dataset = torch.utils.data.random_split(dataset, [8000, 2000])
+train_loader = DataLoader(train_dataset, batch_size = 32, shuffle = True)
+val_loader = DataLoader(val_dataset, batch_size = 32, shuffle = True)
+encoder1 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
+encoder2 = CNN_3Layer(input_channels=1, output_dim=256).to(device)
+optim = Adam(list(encoder1.parameters())+ list(encoder2.parameters()), lr=1e-3)
+
+num_epochs = 10
+print("no errors so far")
+
+for epoch in range(1, num_epochs+1):
+    train_loss_dict = train_one_epoch(epoch, encoder1, encoder2, train_loader, optim)
+    val_loss_dict = val_one_epoch(epoch, encoder1, encoder2, val_loader)
+
+wandb.finish()     

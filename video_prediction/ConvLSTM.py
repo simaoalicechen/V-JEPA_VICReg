@@ -24,6 +24,7 @@ class ConvLSTM(nn.Module):
     def forward(self, X):
 
         # X is a frame sequence (batch_size, num_channels, seq_len, height, width)
+       
 
         # Get the dimensions
         batch_size, _, seq_len, height, width = X.size()

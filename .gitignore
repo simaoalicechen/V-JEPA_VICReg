@@ -6,10 +6,15 @@ not_in_use
 exp
 datasets
 __pycache__
-/encoder.py 
+/processed_batch1
+/processed_batch2
+/processed_batch3
 /metrics.py
 /Miniforge3-Linux-x86_64.sh
 /Miniforge3-Linux-x86_64.sh.1
 /mnist_test_seq.npy
 /resnet.py
 /conv_3Layer2.py 
+VAutoencoder.py
+/train_vicreg_old.py
+prepare_data.py

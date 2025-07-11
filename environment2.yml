@@ -1,0 +1,19 @@
+name: OpenSTL_fixed
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pytorch-cuda=11.6
+  - scikit-learn
+  - pandas
+  - matplotlib
+  - numpy
+  - scipy
+  - pytorchvideo
+  - ipywidgets
+  - scikit-image
+prefix: /scratch/sc4916/conda_envs/OpenSTL_fixed
+
+# conda env export --from-history > environment2.yml
+# both environment and enviornment2 works

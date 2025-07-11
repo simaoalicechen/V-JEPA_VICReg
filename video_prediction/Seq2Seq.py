@@ -36,6 +36,7 @@ class Seq2Seq(nn.Module):
                     activation=activation, frame_size=frame_size)
                 )
                 
+            # very easy to get corrupted when being killed 
             self.sequential.add_module(
                 f"batchnorm{l}", nn.BatchNorm3d(num_features=num_kernels)
                 ) 
