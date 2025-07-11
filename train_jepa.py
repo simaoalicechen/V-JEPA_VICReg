@@ -53,16 +53,16 @@ from predictor import Predictor
 # hyperperameters
 parser = argparse.ArgumentParser(description="jepa_training_script")
 parser.add_argument("--learning_rate", type=float, default=0.0001, help="default learning rate for the optimizer") 
-parser.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "SGD", "RMSprop"], help="Optimizer to use for training")
+parser.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "SGD", "RMSprop"])
 parser.add_argument("--epochs", type= int, default = 10, help = "number of training epochs")
 parser.add_argument("--batch_size", type = float, default = 32)
 parser.add_argument("--weight_decay", type = float, default=1e-5)
 parser.add_argument("--lr_scheduler", type = str, default = "none", choices=["none", "cosine", "step", "plateau"])
 
 # loss weights for var, cov, and pred
-parser.add_argument("--var_loss_weight", type=float, default=1.0, help="Weight for variance loss")
-parser.add_argument("--cov_loss_weight", type=float, default=1.0, help="Weight for covariance loss")
-parser.add_argument("--pred_loss_weight", type=float, default=10.0, help="Weight for prediction loss")
+parser.add_argument("--var_loss_weight", type=float, default=1.0)
+parser.add_argument("--cov_loss_weight", type=float, default=1.0)
+parser.add_argument("--pred_loss_weight", type=float, default=10.0)
 
 args = parser.parse_args()
 
