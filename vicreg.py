@@ -73,13 +73,3 @@ def vc_loss(z1, z2, var_coeff = 15.0, cov_coeff = 1.0):
     return loss, variance_loss, covariance_loss
 
 
-# def inv_loss(z1, z2, inv_coeff = 25.0):
-#     # batch_size, embedding_dim = z1.shape
-
-#     # how similar two embeddings are, use distance based loss 
-#     # minimize 
-#     invariance_loss = torch.nn.functional.mse_loss(z1, z2)
-
-#     invariance_loss = inv_coeff*invariance_loss
-#     return invariance_loss
-

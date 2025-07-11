@@ -28,7 +28,6 @@ from torchvision.transforms import Compose, Lambda
 from torch.utils.data import DataLoader
 from pytorchvideo.data.encoded_video import EncodedVideo
 from resnet import resnet50
-from ConvLSTM import ConvLSTM 
 from IPython.display import display
 from ipywidgets import HBox, Image as WImage
 import ipywidgets as widgets
@@ -36,9 +35,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from conv_3Layer import CNN_3Layer
 import torch.nn.functional as F
-from Seq2Seq import Seq2Seq
 from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 import io
