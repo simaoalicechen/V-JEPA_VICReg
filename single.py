@@ -6,7 +6,6 @@ based on https://github.com/vladisai/JEPA_SSL_NeurIPS_2022/blob/main/data/single
 '''
 from typing import NamedTuple, Any, Optional
 import math
-
 import torch
 import torchvision
 from torchvision import transforms
@@ -24,13 +23,20 @@ class ContinuousMotionDataset:
         batch_size = 32,
         # changed to 20 steps or 20 frames in total 
         n_steps=20,
-        concentration = 0.2,
-        max_step = 4.0,
+        concentration = 1,
+        max_step = 20,
         std = 1.3,
         img_size = 28,
-        normalize = False,
+        normalize = True,
         device = torch.device("cpu"),
         train = True,
+
+        # noise stuff 
+        noise = 0.0,
+        static_noise = 2,
+        structured_noise = False,
+        structured_dataset_path = "/noise_cifar",
+        static_noise_speed = 2,
     ):
         self.size = size
         self.batch_size = batch_size
@@ -40,7 +46,38 @@ class ContinuousMotionDataset:
         self.max_step = max_step
         self.img_size = img_size
         self.device = device
+
+        # noise stuff: 
+        self.noise = noise
+        self.static_noise = static_noise
+        self.static_noise_speed = static_noise_speed
+
+        self.structured_noise = structured_noise
+        if self.structured_noise > 0:
+            self.structured_dataset = torchvision.datasets.CIFAR10(
+                root=structured_dataset_path,
+                train=train,
+                download=True,
+                transform=transforms.Compose(
+                    [
+                        transforms.Grayscale(),
+                        transforms.ToTensor(),
+                    ]
+                ),
+            )
+            self.loader = torch.utils.data.DataLoader(
+                self.structured_dataset,
+                batch_size=self.batch_size,
+                num_workers=4,
+                shuffle=True,
+                drop_last=True,
+                pin_memory=False,
+                prefetch_factor=2,
+            )
+            self.loader_it = iter(self.loader)
+
         self.normalize = False
+
         self.padding = 2 * self.std
         if normalize:
             self.n_mean, self.n_std = self.estimate_mean_std()
@@ -50,6 +87,7 @@ class ContinuousMotionDataset:
         return self.size
 
     def __getitem__(self, i):
+        # print("inside get sample")
         return self.generate_multistep_sample()
 
     def __iter__(self):
@@ -98,6 +136,37 @@ class ContinuousMotionDataset:
         # batch /= batch.max(dim=0).values asdf
         return batch.to(self.device)
 
+    def generate_static_overlay(
+        self,
+        shape,
+    ):
+        # Shape is BS x T x H x W
+        if self.structured_noise:
+            images = self.get_images_for_overlay()
+            images = images.unsqueeze(1)
+            repeat = [1] * len(images.shape)
+            repeat[1] = shape[1]
+            overlay = images.repeat(*repeat)
+        else:
+            static_noise_overlay = (
+                torch.rand(shape[0], *shape[2:], device=self.device)
+            ).unsqueeze(1)
+            # print("inside generate static overlay: ", static_noise_overlay.shape)
+            repeat = [1] * len(static_noise_overlay.shape)
+            repeat[1] = shape[1]
+            overlay = static_noise_overlay.repeat(*repeat)
+            # print("inside generate static overlay, overlay shape: ", overlay.shape)
+        return overlay
+
+    def generate_rnd_overlay(self, shape):
+        if self.structured_noise:
+            images = []
+            for i in range(shape[1]):
+                images.append(self.get_images_for_overlay())
+            overlay = torch.stack(images, dim=1)
+        else:
+            overlay = torch.rand(shape, device=self.device)
+        return overlay
 
     def generate_multistep_sample(
         self,
@@ -105,7 +174,37 @@ class ContinuousMotionDataset:
         actions = self.generate_actions(self.n_steps)
         start_location = self.generate_state()
         sample = self.generate_transitions(start_location, actions)
-
+        if self.static_noise > 0 or self.noise > 0:
+            # static noise means just one noise overlay for all timesteps 
+            # print("inside generate_multistep_sample")
+            static_noise_overlay = (
+                self.generate_static_overlay(sample.states.shape) * sample.states.max()
+            )
+            # print("static noise overlay shape: ", static_noise_overlay.shape)
+            if self.static_noise_speed > 0:
+                for i in range(static_noise_overlay.shape[1]):
+                    static_noise_overlay[:, i] = torch.roll(
+                        static_noise_overlay[:, i],
+                        shifts=int(i * self.static_noise_speed),
+                        dims=-1,
+                    )
+            rnd_noise_overlay = (
+                self.generate_rnd_overlay(sample.states.shape) * sample.states.max()
+            )
+            # print("samples before static noise overlay: ", sample.states.shape)
+            static_noised_states = (
+                sample.states
+                + static_noise_overlay * self.static_noise
+                + rnd_noise_overlay * self.noise
+            )
+            # print("samples after static noise overlay: ", static_noised_states.shape)
+            # noise added
+            # print("samples before != samples after: ", sample.states.sum() == static_noised_states.sum()) # false 
+            sample = Sample(
+                states=static_noised_states,
+                locations=sample.locations,
+                actions=sample.actions,
+            )
         if self.normalize:
             sample = Sample(
                 states=(sample.states - self.n_mean) / self.n_std,
@@ -117,6 +216,8 @@ class ContinuousMotionDataset:
                 / np.sqrt(1 / 12),
                 actions=sample.actions / (0.4102 * self.max_step + 1e-7),
             )
+        # print("inside continuous Motion Dataste sample type: ", type(sample))
+
         return sample
 
     def normalize_location(self, location):

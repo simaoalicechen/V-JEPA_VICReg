@@ -106,8 +106,12 @@ One dot not moving
 One dot moving predictably
 One dot moving unpredictably 
 '''
-dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20)
+
+dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20, concentration = 1)
 print(len(dataset))
+
+# background noise download (with CIFAR-10)
+
 
 # loss functions
 def pred_loss_computations(z1, z2):
