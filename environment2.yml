@@ -1,3 +1,11 @@
+# note: this file may not work on all machines 
+# What I did, besides this file 
+# pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+# pip install pytorchvideo
+# pip install protobuf==3.20.3
+# module load cuda/11.6.2
+# module load cudnn/8.6.0.163-cuda11
+
 name: OpenSTL_fixed
 channels:
   - conda-forge
