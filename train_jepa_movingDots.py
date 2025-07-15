@@ -188,12 +188,16 @@ def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
             to predictor 
             '''
             # TODO
-            # need to either change the action data generation 
-            # or change how this is being sliced
-            # because the original dataset has only 2 frames
-            # here, we are trying to use 19 frames 
-            current_action = actions[:,:]
+            # print("seq_length: ", seq_length) 20
+            # the original dataset had 2 frames
+            # use 19 frames of action, beacuse we have 20 frames of videos
+            current_action = actions[:,t]
             # print("shapes: ", current_representation.shape, current_action.shape)
+            # shapes:  torch.Size([32, 512]) torch.Size([32, 1, 2]) curr has been reshaped to 32, 512 after encoder
+            # current_action is still 32, 1, 2, just once slice from each batch
+            # we are going to send the one slice action to the predictor so that for each 19 frames, they will have 
+            # one different action matched with them to go through the predictor and generate a St+1_pred
+            # then this St+1_pred will be trained with St+1 with pred_loss 
             predicted_representation = predictor(current_representation, current_action)
             pred_loss = pred_loss_computations(predicted_representation, actual_representations[t+1])
             total_pred_loss += pred_loss

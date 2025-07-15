@@ -16,19 +16,22 @@ class Predictor_with_action(nn.Module):
             nn.Linear(256, 128)
         )
         self.action_branch = nn.Sequential(
-            nn.Linear(19*1*2, 256), 
+            nn.Linear(2, 32), 
             nn.ReLU(), 
-            nn.Linear(256, 512), 
+            nn.Linear(32, 64), 
             nn.ReLU(), 
-            nn.Linear(512, 128), 
+            nn.Linear(64, 128), 
         )
         self.combined_layer = nn.Linear(128 + 128, 64)
         self.output_layer = nn.Linear(64, 1)
 
     def forward(self, curr_represenation, action):
         rpre_output = self.rep_branch(curr_represenation)
+        # print("rpre_output.shape: ", rpre_output.shape)
+        # print("action.shape: ", action.shape)
         # action_output = self.action_branch(action)
         action_flat = action.view(action.size(0), -1)
+        # print("action.shape flat: ", action_flat.shape)
         action_output = self.action_branch(action_flat)
         combined_output = torch.cat((rpre_output, action_output), dim=1)
         output = self.output_layer(self.combined_layer(combined_output))

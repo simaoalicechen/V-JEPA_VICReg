@@ -1,6 +1,9 @@
 '''
 have not considered noise 
 '''
+'''
+based on https://github.com/vladisai/JEPA_SSL_NeurIPS_2022/blob/main/data/single.py
+'''
 from typing import NamedTuple, Any, Optional
 import math
 
@@ -19,8 +22,8 @@ class ContinuousMotionDataset:
         self,
         size,
         batch_size = 32,
-        # changed to 19 steps r 20 frames in total 
-        n_steps=19,
+        # changed to 20 steps or 20 frames in total 
+        n_steps=20,
         concentration = 0.2,
         max_step = 4.0,
         std = 1.3,
@@ -128,6 +131,7 @@ class ContinuousMotionDataset:
     ):
         locations = [location]
         for i in range(actions.shape[1]):
+            # print("generate_transitions: ", actions.shape[1])
             next_location = self.generate_transition(locations[-1], actions[:, i])
             locations.append(next_location)
 
@@ -159,7 +163,7 @@ class ContinuousMotionDataset:
         )
         vec = ContinuousMotionDataset.angle_to_vec(a)
         actions = vec * step_sizes
-        # print(f"generate_actions output shape: {actions.shape}")
+        # print(f"inside generate_actions function, generate_actions output shape: {actions.shape}")
         return actions
 
     @staticmethod
