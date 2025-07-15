@@ -1,7 +1,4 @@
 '''
-have not considered noise 
-'''
-'''
 based on https://github.com/vladisai/JEPA_SSL_NeurIPS_2022/blob/main/data/single.py
 '''
 from typing import NamedTuple, Any, Optional
@@ -23,7 +20,7 @@ class ContinuousMotionDataset:
         batch_size = 32,
         # changed to 20 steps or 20 frames in total 
         n_steps=20,
-        concentration = 1,
+        concentration = 0.2,
         max_step = 20,
         std = 1.3,
         img_size = 28,
@@ -32,11 +29,11 @@ class ContinuousMotionDataset:
         train = True,
 
         # noise stuff 
-        noise = 0.0,
-        static_noise = 2,
+        noise = 2.0, 
+        static_noise = 2.0,
         structured_noise = False,
         structured_dataset_path = "/noise_cifar",
-        static_noise_speed = 2,
+        static_noise_speed = 2.0,
     ):
         self.size = size
         self.batch_size = batch_size
@@ -177,6 +174,9 @@ class ContinuousMotionDataset:
         if self.static_noise > 0 or self.noise > 0:
             # static noise means just one noise overlay for all timesteps 
             # print("inside generate_multistep_sample")
+            # static noise overlay, when the speed is 0, it would be the same overlay for all frames.
+            # however, if the speed is not zero, then, each frame would have strategically changed (torch.roll())
+            # noise over all frames 
             static_noise_overlay = (
                 self.generate_static_overlay(sample.states.shape) * sample.states.max()
             )
@@ -188,10 +188,14 @@ class ContinuousMotionDataset:
                         shifts=int(i * self.static_noise_speed),
                         dims=-1,
                     )
+            # random noise overlay depends on [sample.states.shape * sample.states.max()]
+            # random noise overaly's noise are completely random and different for all frames involved. 
+            # therefore, there is no need to use torch.roll() to artificially move the noise patterns. 
             rnd_noise_overlay = (
                 self.generate_rnd_overlay(sample.states.shape) * sample.states.max()
             )
             # print("samples before static noise overlay: ", sample.states.shape)
+            # static_noise depends on static-noise-overlay and rnd-noise-overlay
             static_noised_states = (
                 sample.states
                 + static_noise_overlay * self.static_noise
@@ -249,6 +253,7 @@ class ContinuousMotionDataset:
             next_location, min=self.padding, max=self.img_size - 1 - self.padding
         )
         return next_location
+
 
     def generate_actions(self, n_steps: int):
         x = torch.rand(self.batch_size, device=self.device) * 2 * math.pi

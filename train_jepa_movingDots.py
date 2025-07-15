@@ -1,7 +1,3 @@
-'''
-have not considered noise 
-https://github.com/vladisai/JEPA_SSL_NeurIPS_2022/blob/main/data/single.py
-'''
 import torch
 import argparse
 import json
@@ -59,6 +55,25 @@ parser.add_argument("--lr_scheduler", type = str, default = "none", choices=["no
 parser.add_argument("--var_loss_weight", type=float, default=1.0)
 parser.add_argument("--cov_loss_weight", type=float, default=1.0)
 parser.add_argument("--pred_loss_weight", type=float, default=10.0)
+
+# settings for input videos
+parser.add_argument("--concentration", type = float, default = 0.2, help = "the lower the number, the more unpredictable the actions would be")
+
+# static noise and how they change depend on the static noise setting (the lower the less noise)
+# and the speed. Once there is speed, the frames will have sequentially changed static noise on them 
+# aka, the noise are no longer static for all frames
+parser.add_argument("--static_noise", type = float, default= 2, help = "the lower the number, the less noise would be in overlay (but they would be the same noise for all frames if the speed is 0)")
+parser.add_argument("--static_noise_speed", type = float, default= 2, help = "the higher the absolute value of the number, the more rollover of the static noise patterns woudl be, with torch.roll()")
+
+# However, the --noise parameter only decides how much noise each overlay has 
+# that means, the higher the number, the more noise each frame would have 
+# and they are random and all frames would have different noise
+# therefore, there is no need for noise speed, as there is no need to move the noise in one way or another
+# for different frames. 
+parser.add_argument("--noise", type = float, default= 2, help = "the higher the absolute value of the number, the more noise each frame would have, and the noise are different. ")
+
+# structured_noise controls if we use the cifar-10 as background noise
+parser.add_argument("--structured_noise", type = bool, default = False, help = "True: cifar-10 background noise would be added; False: not added")
 
 args = parser.parse_args()
 
