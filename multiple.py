@@ -1,6 +1,7 @@
 """Multiple dots generation dataset"""
 '''
 have not considered noise 
+https://github.com/vladisai/JEPA_SSL_NeurIPS_2022/blob/main/data/multiple.py
 '''
 from typing import List, Any, Optional
 

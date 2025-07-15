@@ -18,3 +18,4 @@ __pycache__
 VAutoencoder.py
 /train_vicreg_old.py
 prepare_data.py
+predictor_with_moving_dot.py

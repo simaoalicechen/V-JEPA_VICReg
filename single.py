@@ -18,8 +18,9 @@ class ContinuousMotionDataset:
     def __init__(
         self,
         size,
-        batch_size,
-        n_steps=2,
+        batch_size = 32,
+        # changed to 19 steps r 20 frames in total 
+        n_steps=19,
         concentration = 0.2,
         max_step = 4.0,
         std = 1.3,
@@ -158,6 +159,7 @@ class ContinuousMotionDataset:
         )
         vec = ContinuousMotionDataset.angle_to_vec(a)
         actions = vec * step_sizes
+        # print(f"generate_actions output shape: {actions.shape}")
         return actions
 
     @staticmethod
@@ -197,7 +199,6 @@ class ContinuousMotionDataset:
 
 class DeterministicMotionDataset(ContinuousMotionDataset):
     def generate_actions(self, n_steps: int):
-        """We sample just one action and then repeat it for the whole episode."""
         x = torch.rand(self.batch_size, 1, device=self.device) * 2 * math.pi
         a = x.repeat(1, n_steps - 1)
         vec = ContinuousMotionDataset.angle_to_vec(a)

@@ -1,3 +1,7 @@
+'''
+have not considered noise 
+https://github.com/vladisai/JEPA_SSL_NeurIPS_2022/blob/main/data/single.py
+'''
 import torch
 import argparse
 import json
@@ -34,7 +38,8 @@ import wandb
 import inspect
 from encoder import Encoder
 from predictor import Predictor 
-from predictor_with_action import Predictor_with_action
+# from predictor_with_moving_dot import Predictor_md
+from predictor_dot_action import Predictor_with_action
 from single import ContinuousMotionDataset, DeterministicMotionDataset
 from multiple import MultiDotDataset, create_three_datasets
 
@@ -42,7 +47,8 @@ from multiple import MultiDotDataset, create_three_datasets
 # hyperparameter
 parser = argparse.ArgumentParser(description="jepa_training_script")
 parser.add_argument("--learning_rate", type=float, default=0.0001, help="default learning rate for the optimizer") 
-parser.add_argument("--action", type=str, default= None, choices=["even frames", None], help="currently, only even frames implemented as action")
+# disable this for the moving dot, because the action will be determined by the batch's properties
+parser.add_argument("--action", type=str, default= "yes", choices=["even frames", None], help="currently, only even frames implemented as action")
 parser.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "SGD", "RMSprop"])
 parser.add_argument("--epochs", type= int, default = 10, help = "number of training epochs")
 parser.add_argument("--batch_size", type = float, default = 32)
@@ -122,66 +128,81 @@ def covariance_loss(actual_repr):
 
 print("after loss functions")
 
-def forward_pass(epoch, batch_num, encoder, predictor, frames, args):
+def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
     # 20 --> seq_length 
     # batch = batch.to(device) 32 usually 
     # print("frames length: ", len(frames))
-    first_frame = frames[0][0][0][:][:]
+    first_frame = batch[0][0][0][:][:]
     # print("first frame: ", first_frame)
     # print("first frame: ", frames[0][0][0][0][0])
-    frames = frames.states.to(device)
+    frames = batch.states.to(device)
+    # locations = batch.locations.to(device)
+    actions = batch.actions.to(device)
+    # print("locations shape: ", locations.shape)
+    # print("actions shape: ", actions.shape) # only 19 frames, because the last frame does not generate action 
     frames = frames.squeeze(1)
+    actions = actions.squeeze(1)
+    # print("actions shape again: ", actions.shape)
+
+
     # frames = frames.squeeze(2)
     # print(f"frame shape: {frames.shape}")
 
     # print(f"frame min/max: {frames.min():.3f}/{frames.max():.3f}")
     # print(f"unique values in first frame: {frames[0,0].unique()[:10]}") 
-    # locations = frames.locations.to(device)
-    # actions = frames.actions.to(device)
 
+    if actions != None:
+        predictor = predictor.to(device)
+        seq_length = frames.shape[1]
+        batch_size = frames.shape[0]
 
-    if args.action == "even frames":
-        pass
-    #     predictor = Predictor_with_action().to(device)
-    #     seq_length = frames.shape[1]
-    #     batch_size = frames.shape[0]
-
-        # odd_frames = frames[:, ::2]
-        # even_frames = frames[:, 1::2]
-
-        # min_length = min(odd_frames.shape[1], even_frames.shape[1])
-        # actual_representations = []
+        actual_representations = []
         # action_representations = []
-        # total_cov_loss = 0.0
-        # total_var_loss = 0.0
-        # total_vc_loss = 0.0
+        total_cov_loss = 0.0
+        total_var_loss = 0.0
+        total_vc_loss = 0.0
         
-        # for t in range(min_length):
-        #     represenation = encoder(odd_frames[:, t])
-        #     action_frames = even_frames[:, t]
-        #     actual_representations.append(represenation)
+        for t in range(seq_length):
+            represenation = encoder(frames[:, t])
+            # action_frames = even_frames[:, t]
+            actual_representations.append(represenation)
 
-        #     flattened_action_frames = action_frames.flatten(start_dim = 1)
-        #     action_representations.append(flattened_action_frames)
-        #     var_loss = variance_loss(represenation)
-        #     cov_loss = covariance_loss(represenation)
-        #     total_cov_loss += cov_loss
-        #     total_var_loss += var_loss
-        #     total_vc_loss += (cov_loss + var_loss)
-        # total_pred_loss = 0.0
-        # total_weighted_loss = 0.0
-        # predicted_representations = []
-        # current_representation = actual_representations[0]
+            # flattened_action_frames = action_frames.flatten(start_dim = 1)
+            # action_representations.append(flattened_action_frames)
+            var_loss = variance_loss(represenation)
+            cov_loss = covariance_loss(represenation)
+            total_cov_loss += cov_loss
+            total_var_loss += var_loss
+            total_vc_loss += (cov_loss + var_loss)
+        total_pred_loss = 0.0
+        total_weighted_loss = 0.0
+        predicted_representations = []
+        current_representation = actual_representations[0]
         # current_action = action_representations[0]
-        # for t in range(min_length-1):
-        #     predicted_representation = predictor(current_representation, current_action)
-        #     pred_loss = pred_loss_computations(predicted_representation, actual_representations[t+1])
-        #     total_pred_loss += pred_loss
-        #     current_representation = actual_representations[t+1]
+        for t in range(seq_length-1):
+            '''
+            this is how to deal with the 
+            dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20)
+            because the whole dataset is with unpredictoable movements (not the first layer of the
+            three overlays). Therefore, we do not slice it, we just take the all action and send it 
+            to predictor 
+            '''
+            # TODO
+            # need to either change the action data generation 
+            # or change how this is being sliced
+            # because the original dataset has only 2 frames
+            # here, we are trying to use 19 frames 
+            current_action = actions[:,:]
+            # print("shapes: ", current_representation.shape, current_action.shape)
+            predicted_representation = predictor(current_representation, current_action)
+            pred_loss = pred_loss_computations(predicted_representation, actual_representations[t+1])
+            total_pred_loss += pred_loss
+            current_representation = actual_representations[t+1]
 
-    elif args.action == None: 
+    elif actions == None: 
         # print("currently, action is None")
-        predictor = Predictor().to(device)
+        # predictor = Predictor()
+        predictor = predictor.to(device)
         seq_length = frames.shape[1]
         batch_size = frames.shape[0]
 
@@ -328,10 +349,6 @@ train_loader = DataLoader(train_dataset, batch_size = 32, shuffle = True)
 val_loader = DataLoader(val_dataset, batch_size = 32, shuffle = True)
 encoder = Encoder().to(device)
 
-if args.action == "even frames":
-    predictor = Predictor_with_action().to(device)
-elif args.action == None:
-    predictor = Predictor().to(device)
 
 # arg parser stuff: 
 learning_rate = args.learning_rate
@@ -346,6 +363,11 @@ pred_loss_weight = args.pred_loss_weight
 weight_decay = args.weight_decay
 lr_scheduler = args.lr_scheduler
 
+# 
+if args.action != None:
+    predictor = Predictor_with_action()
+else:
+    predictor = Predictor()
 # args naming: 
 if optimizer_name == "Adam":
     optim = Adam(list(encoder.parameters())+ list(predictor.parameters()), lr=learning_rate)
