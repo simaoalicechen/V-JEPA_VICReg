@@ -21,5 +21,5 @@ V-JEPA and VICReg results:
 
  - See wandb_results
  - result chart naming conventions: 
-    - jepa _ 'epoch number' _ 'learning rate' _ 'var loss weight' _ 'cov loss weight' _ 'pred loss weight'
+    - jepa _ 'epoch number' _ 'learning rate' _ 'var loss weight' _ 'cov loss weight' _ 'pred loss weight'_ 'Action param' _ 'Static Noise param' _ 'Static Noise Speed param' _ 'Noise param'
     - vicreg _ 'epoch number' _ 'learning rate' _ 'var loss weight' _ 'cov loss weight' _ 'inv loss weight'
