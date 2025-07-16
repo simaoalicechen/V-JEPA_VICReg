@@ -5,6 +5,7 @@ import time
 import argparse
 from pathlib import Path
 from enum import Enum, auto
+import torchvision
 import os
 from torchvision import transforms
 import matplotlib.pyplot as plt
@@ -44,7 +45,7 @@ from multiple import MultiDotDataset, create_three_datasets
 parser = argparse.ArgumentParser(description="jepa_training_script")
 parser.add_argument("--learning_rate", type=float, default=0.0001, help="default learning rate for the optimizer") 
 # disable this for the moving dot, because the action will be determined by the batch's properties
-parser.add_argument("--action", type=str, default= "yes", choices=["even frames", None], help="currently, only even frames implemented as action")
+parser.add_argument("--action", type=str, default= None, choices=["Yes", None], help="currently, action (a string) just means we will send the action vector to the predictor")
 parser.add_argument("--optimizer", type=str, default="Adam", choices=["Adam", "SGD", "RMSprop"])
 parser.add_argument("--epochs", type= int, default = 10, help = "number of training epochs")
 parser.add_argument("--batch_size", type = float, default = 32)
@@ -62,18 +63,22 @@ parser.add_argument("--concentration", type = float, default = 0.2, help = "the 
 # static noise and how they change depend on the static noise setting (the lower the less noise)
 # and the speed. Once there is speed, the frames will have sequentially changed static noise on them 
 # aka, the noise are no longer static for all frames
-parser.add_argument("--static_noise", type = float, default= 2, help = "the lower the number, the less noise would be in overlay (but they would be the same noise for all frames if the speed is 0)")
-parser.add_argument("--static_noise_speed", type = float, default= 2, help = "the higher the absolute value of the number, the more rollover of the static noise patterns woudl be, with torch.roll()")
+parser.add_argument("--static_noise", type = float, default= 0, help = "the lower the number, the less noise would be in overlay (but they would be the same noise for all frames if the speed is 0)")
+parser.add_argument("--static_noise_speed", type = float, default= 0, help = "the higher the absolute value of the number, the more rollover of the static noise patterns woudl be, with torch.roll()")
 
 # However, the --noise parameter only decides how much noise each overlay has 
 # that means, the higher the number, the more noise each frame would have 
 # and they are random and all frames would have different noise
 # therefore, there is no need for noise speed, as there is no need to move the noise in one way or another
 # for different frames. 
-parser.add_argument("--noise", type = float, default= 2, help = "the higher the absolute value of the number, the more noise each frame would have, and the noise are different. ")
+parser.add_argument("--noise", type = float, default= 0, help = "the higher the absolute value of the number, the more noise each frame would have, and the noise are different.")
 
 # structured_noise controls if we use the cifar-10 as background noise
 parser.add_argument("--structured_noise", type = bool, default = False, help = "True: cifar-10 background noise would be added; False: not added")
+
+# model specific parameters: 
+parser.add_argument("--size", type = int, default = 1000, help = "total number of frames.")
+parser.add_argument("--n_steps", type = int, default = 20, help = "Usually, we set the frame number to 20" )
 
 args = parser.parse_args()
 
@@ -81,14 +86,22 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 
 #wandb
-os.environ["WANDB_MODE"] = "offline"
+os.environ["WANDB_MODE"] = "online"
 wandb.init(
     project="ssl-vicreg-jepa",
     name="v-jepa-movingMNIST",
-    mode="offline", 
+    mode="online", 
     config={
         "epochs": args.epochs,
-        "batch_size": args.batch_size,
+        # this is just training batch size
+        'size': args.size, 
+        'batch_size': 1, 
+        'n_frames': args.n_steps, 
+        'action' : args.action, 
+        'noise' : args.noise,
+        'static_noise': args.static_noise,
+        'static_noise_speed': args.static_noise_speed, 
+        'structured_noise': args.structured_noise, 
         "learning_rate": args.learning_rate,
         "optim_choice": args.optimizer,
         "action_choice": args.action, 
@@ -99,6 +112,12 @@ wandb.init(
         "ssl_method": "VC + MSE",
     }
 )
+
+# download cifar-10: 
+
+# noise_cifar = torchvision.datasets.CIFAR10(root = "noise_cifar", 
+# train = True, transform = None, target_transform = None, download = True)
+# cifar_dataset = datasets.CIFAR10(root='noise_cifar', train=True, download=False)
 
 ## Create the moving dot datasets
 
@@ -111,9 +130,21 @@ Level one:
 simplest way to create the dataset:
 just a continuous dot moving dataset with action and/or noise
 '''
-dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20, noise = args.noise, 
-                            static_noise = args.static_noise, static_noise_speed = args.static_noise_speed,  
-                            structured_noise = False)
+dataset = ContinuousMotionDataset(size = args.size, batch_size = 1, n_steps=args.n_steps, 
+                            noise = args.noise, static_noise = args.static_noise, 
+                            static_noise_speed = args.static_noise_speed,  
+                            structured_noise = args.structured_noise)
+param_dict = {
+    'size': args.size, 
+    'batch_size': 1, 
+    'n_frames': args.n_steps, 
+    'action' : args.action, 
+    'noise' : args.noise,
+    'static_noise': args.static_noise,
+    'static_noise_speed': args.static_noise_speed, 
+    'structured_noise': args.structured_noise, 
+}
+print(param_dict)
 print(len(dataset))
 
 '''
@@ -123,14 +154,6 @@ One dot not moving
 One dot moving predictably
 One dot moving unpredictably 
 '''
-
-
-
-dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20, concentration = 1)
-print(len(dataset))
-
-# background noise download (with CIFAR-10)
-
 
 # loss functions
 def pred_loss_computations(z1, z2):
@@ -150,31 +173,23 @@ def covariance_loss(actual_repr):
     return cov_loss
 
 print("after loss functions")
-
+# os.mkdir("./testing_frames/no_action_no_noise/")
+# os.mkdir("./testing_frames/action_no_noise/")
+# os.mkdir("./testing_frames/action_noise_2/")
+# os.mkdir("./testing_frames/action_noise_0.1/")
+# os.mkdir("./testing_frames/action_static_noise_0.1/")
+# os.mkdir("./testing_frames/no_action_static_noise_0.3_speed_1/")
+# os.mkdir("./testing_frames/action_static_noise_0.1_speed_1/")
 def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
-    # 20 --> seq_length 
-    # batch = batch.to(device) 32 usually 
-    # print("frames length: ", len(frames))
     first_frame = batch[0][0][0][:][:]
     # print("first frame: ", first_frame)
     # print("first frame: ", frames[0][0][0][0][0])
     frames = batch.states.to(device)
-    # locations = batch.locations.to(device)
     actions = batch.actions.to(device)
-    # print("locations shape: ", locations.shape)
     # print("actions shape: ", actions.shape) # only 19 frames, because the last frame does not generate action 
     frames = frames.squeeze(1)
     actions = actions.squeeze(1)
-    # print("actions shape again: ", actions.shape)
-
-
-    # frames = frames.squeeze(2)
-    # print(f"frame shape: {frames.shape}")
-
-    # print(f"frame min/max: {frames.min():.3f}/{frames.max():.3f}")
-    # print(f"unique values in first frame: {frames[0,0].unique()[:10]}") 
-
-    if actions != None:
+    if args.action != None:
         predictor = predictor.to(device)
         seq_length = frames.shape[1]
         batch_size = frames.shape[0]
@@ -186,6 +201,20 @@ def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
         total_vc_loss = 0.0
         
         for t in range(seq_length):
+            image_1 = frames[0, t].cpu().squeeze() 
+            if epoch == 1 and batch_num == 1: 
+                plt.figure(figsize=(6, 6))
+                plt.imshow(image_1, cmap='gray')
+                plt.axis('off')
+                plt.title(f'epoch {epoch}, batch {batch_num}, frame {t}')
+                
+                plt.savefig(f'./testing_frames/action_static_noise_0.1_speed_1/frame_epoch{epoch}_batch{batch_num}_t{t}.png', 
+                           bbox_inches='tight', dpi=150)
+                plt.close()
+                print(f"saved frame: frame_epoch{1}_batch{batch_num}_t{t}.png")
+                print(f"frame shape: {image_1.shape}")
+                print(f"frame value range: [{image_1.min():.3f}, {image_1.max():.3f}]")
+
             represenation = encoder(frames[:, t])
             # action_frames = even_frames[:, t]
             actual_representations.append(represenation)
@@ -210,11 +239,11 @@ def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
             three overlays). Therefore, we do not slice it, we just take the all action and send it 
             to predictor 
             '''
-            # TODO
-            # print("seq_length: ", seq_length) 20
-            # the original dataset had 2 frames
             # use 19 frames of action, beacuse we have 20 frames of videos
             current_action = actions[:,t]
+            # if t == 0:
+                # print("current_action: ", current_action)
+                # print("current_action shape ", current_action.shape)
             # print("shapes: ", current_representation.shape, current_action.shape)
             # shapes:  torch.Size([32, 512]) torch.Size([32, 1, 2]) curr has been reshaped to 32, 512 after encoder
             # current_action is still 32, 1, 2, just once slice from each batch
@@ -226,10 +255,9 @@ def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
             total_pred_loss += pred_loss
             current_representation = actual_representations[t+1]
 
-    elif actions == None: 
-        # print("currently, action is None")
-        # predictor = Predictor()
+    elif args.action == None: 
         predictor = predictor.to(device)
+        print(frames.shape)
         seq_length = frames.shape[1]
         batch_size = frames.shape[0]
 
@@ -238,7 +266,20 @@ def forward_pass(epoch, batch_num, encoder, predictor, batch, args):
         total_var_loss = 0.0
         total_vc_loss = 0.0
         for t in range(seq_length):
-            # print("before encoder")
+            image_1 = frames[0, t].cpu().squeeze() 
+            if epoch == 1 and batch_num == 1: 
+                plt.figure(figsize=(6, 6))
+                plt.imshow(image_1, cmap='gray')
+                plt.axis('off')
+                plt.title(f'epoch {epoch}, batch {batch_num}, frame {t}')
+                
+                plt.savefig(f'./testing_frames/no_action_no_noise/frame_epoch{epoch}_batch{batch_num}_t{t}.png', 
+                           bbox_inches='tight', dpi=150)
+                plt.close()
+                print(f"saved frame: frame_epoch{1}_batch{batch_num}_t{t}.png")
+                print(f"frame shape: {image_1.shape}")
+                print(f"frame value range: [{image_1.min():.3f}, {image_1.max():.3f}]")
+
             represenation = encoder(frames[:, t])
             # print(represenation.shape)
             actual_representations.append(represenation)
@@ -285,7 +326,7 @@ def train_one_epoch(epoch, encoder, predictor, dataloader, optimizer):
     }
     total_batch_length = len(dataloader)
     for batch_num, batch in enumerate(dataloader):
-        loss_dict = forward_pass(epoch, batch_num, encoder, predictor, batch, args)
+        loss_dict = forward_pass(epoch, batch_num+1, encoder, predictor, batch, args)
      
         # TODO, should discuss
         total_weighted_loss = loss_dict["total_weighted_loss"]
@@ -336,7 +377,7 @@ def val_one_epoch(epoch, encoder, predictor, val_loader):
 
     with torch.no_grad():
         for batch_num, batch in enumerate(val_loader):
-            loss_dict = forward_pass(epoch, batch_num, encoder, predictor, batch, args)  
+            loss_dict = forward_pass(epoch, batch_num+1, encoder, predictor, batch, args)  
          
             total_weighted_loss = loss_dict["total_weighted_loss"]
             for key in epoch_loss_dict_val:
@@ -366,14 +407,14 @@ def val_one_epoch(epoch, encoder, predictor, val_loader):
     return new_epoch_logged_losses_val
 
 
-dataloader = DataLoader(dataset, batch_size = 32, shuffle = True)
+dataloader = DataLoader(dataset, batch_size = args.batch_size, shuffle = True)
 
 print("after train loaders")
 print(len(dataloader))
 
 train_dataset, val_dataset = torch.utils.data.random_split(dataset, [800, 200])
-train_loader = DataLoader(train_dataset, batch_size = 32, shuffle = True)
-val_loader = DataLoader(val_dataset, batch_size = 32, shuffle = True)
+train_loader = DataLoader(train_dataset, args.batch_size, shuffle = True)
+val_loader = DataLoader(val_dataset, batch_size = args.batch_size, shuffle = True)
 encoder = Encoder().to(device)
 
 

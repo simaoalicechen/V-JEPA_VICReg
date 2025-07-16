@@ -29,11 +29,11 @@ class ContinuousMotionDataset:
         train = True,
 
         # noise stuff 
-        noise = 2.0, 
-        static_noise = 2.0,
+        noise = 0.0, 
+        static_noise = 0.0,
         structured_noise = False,
-        structured_dataset_path = "/noise_cifar",
-        static_noise_speed = 2.0,
+        structured_dataset_path = "./noise_cifar",
+        static_noise_speed = 0.0,
     ):
         self.size = size
         self.batch_size = batch_size
@@ -122,13 +122,17 @@ class ContinuousMotionDataset:
         )
         return location
 
+    # get the images from cifar-10 and then use them as overlay as noise 
+    # next()
+    # basically use them as complete distractions 
+    # transparency? 
     def get_images_for_overlay(self):
         try:
             batch = next(self.loader_it)
         except StopIteration:
             self.loader_it = iter(self.loader)
             batch = next(self.loader_it)
-
+        # cifar-10 image size is 32*32 
         batch = batch[0][:, :, :28, :28]  # crop from 32 by 32 to 28 by 28
         # batch /= batch.max(dim=0).values asdf
         return batch.to(self.device)
@@ -139,11 +143,15 @@ class ContinuousMotionDataset:
     ):
         # Shape is BS x T x H x W
         if self.structured_noise:
+            print("structured_noise is True and it is here.")
             images = self.get_images_for_overlay()
             images = images.unsqueeze(1)
+            # print("image shape: ", images.shape)
             repeat = [1] * len(images.shape)
             repeat[1] = shape[1]
             overlay = images.repeat(*repeat)
+            # print("overlay shape: ", overlay.shape)
+            # print(overlay)
         else:
             static_noise_overlay = (
                 torch.rand(shape[0], *shape[2:], device=self.device)
@@ -172,6 +180,7 @@ class ContinuousMotionDataset:
         start_location = self.generate_state()
         sample = self.generate_transitions(start_location, actions)
         if self.static_noise > 0 or self.noise > 0:
+            print("selft.noise or self.static_noise is here")
             # static noise means just one noise overlay for all timesteps 
             # print("inside generate_multistep_sample")
             # static noise overlay, when the speed is 0, it would be the same overlay for all frames.
@@ -182,6 +191,7 @@ class ContinuousMotionDataset:
             )
             # print("static noise overlay shape: ", static_noise_overlay.shape)
             if self.static_noise_speed > 0:
+                print("self.static_noise_speed is here")
                 for i in range(static_noise_overlay.shape[1]):
                     static_noise_overlay[:, i] = torch.roll(
                         static_noise_overlay[:, i],
