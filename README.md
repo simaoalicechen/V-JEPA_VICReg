@@ -19,7 +19,14 @@ Sample command lines:
 
 V-JEPA and VICReg results:
 
- - See wandb_results
- - result chart naming conventions: 
+ - Results: wandb_results
+ - Ablation tests: four variables:
+    - Action: whether to include the action in predictor input or not (True/False)
+      - Default concentration/predictability: 0.2 (e.g., A0.2)
+    - Static noise (same noise to all the frames) (Float) (e.g., SN0.1, 0.3 is close to blurry noise)
+    - Static noise with speed (different noise to all the frames, but the same patten) (Float) (e.g., S1)
+    - Noise (random noise added to all frames. Their placements and patterns are both random, thus no speed attached to it) (Float) (e.g., N0.1, 0.3 is close to blurry noise)
+    - Naming conventions: A - action concentration, SN - Static noise, S - Speed, N - Noise. 
+ - Result chart naming conventions: 
     - jepa _ 'epoch number' _ 'learning rate' _ 'var loss weight' _ 'cov loss weight' _ 'pred loss weight'_ 'Action param' _ 'Static Noise param' _ 'Static Noise Speed param' _ 'Noise param'
     - vicreg _ 'epoch number' _ 'learning rate' _ 'var loss weight' _ 'cov loss weight' _ 'inv loss weight'
