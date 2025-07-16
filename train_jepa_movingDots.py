@@ -109,9 +109,11 @@ class DatasetType(Enum):
 '''
 Level one: 
 simplest way to create the dataset:
-just a continuous dot moving dataset with action or no noise
+just a continuous dot moving dataset with action and/or noise
 '''
-dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20)
+dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20, noise = args.noise, 
+                            static_noise = args.static_noise, static_noise_speed = args.static_noise_speed,  
+                            structured_noise = False)
 print(len(dataset))
 
 '''
@@ -121,6 +123,8 @@ One dot not moving
 One dot moving predictably
 One dot moving unpredictably 
 '''
+
+
 
 dataset = ContinuousMotionDataset(size = 1000, batch_size = 1, n_steps=20, concentration = 1)
 print(len(dataset))

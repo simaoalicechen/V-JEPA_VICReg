@@ -11,62 +11,71 @@ def create_three_datasets(
     batch_size,
     n_steps,
     std= 1.3,
-    # noise = 0.0,
-    # static_noise = 0.0,
-    # static_noise_speed = 0.0,
-    # structured_noise = False,  
-    # structured_dataset_path = "/tmp/cifar10",
     img_size = 28,
     normalize = False,
     sum_image = False,
     device = torch.device("cpu"),
     train = False,
+
+    # noise stuff: 
+    noise = 0.0,
+    static_noise = 0.0,
+    static_noise_speed = 0.0,
+    structured_noise = False,  
+    structured_dataset_path = "/noise_cifar",
 ):
     d1 = ContinuousMotionDataset(
         size,
         batch_size=batch_size,
         n_steps=n_steps,
         std=std,
-        # noise=noise,
-        # static_noise=static_noise,
-        # static_noise_speed=static_noise_speed,
-        # structured_noise=structured_noise,
         structured_dataset_path=structured_dataset_path,
         img_size=img_size,
         normalize=normalize,
         device=device,
         train=train,
+
+        # noise stuff: 
+        noise=noise,
+        static_noise=static_noise,
+        static_noise_speed=static_noise_speed,
+        structured_noise=structured_noise,
     )
     d2 = ContinuousMotionDataset(
         size,
         batch_size=batch_size,
         n_steps=n_steps,
         std=std,
-        # noise=noise,
-        # static_noise=static_noise,
-        # static_noise_speed=static_noise_speed,
-        # structured_noise=structured_noise,
         structured_dataset_path=structured_dataset_path,
         img_size=img_size,
         normalize=normalize,
         device=device,
         train=train,
+
+        # noise: 
+        noise=noise,
+        static_noise=static_noise,
+        static_noise_speed=static_noise_speed,
+        structured_noise=structured_noise,
     )
     d3 = DeterministicMotionDataset(
         size,
         batch_size=batch_size,
         n_steps=n_steps,
         std=std,
-        # noise=noise,
-        # static_noise=static_noise,
-        # static_noise_speed=static_noise_speed,
-        # structured_noise=structured_noise,
         structured_dataset_path=structured_dataset_path,
         img_size=img_size,
         normalize=normalize,
         max_step=0,
         device=device,
         train=train,
+
+        # noise stuff: 
+
+        noise=noise,
+        static_noise=static_noise,
+        static_noise_speed=static_noise_speed,
+        structured_noise=structured_noise,
     )
     return MultiDotDataset([d1, d2, d3], sum_image=sum_image)
 
